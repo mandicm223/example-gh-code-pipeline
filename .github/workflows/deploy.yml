@@ -22,20 +22,30 @@ jobs:
           aws-region: eu-west-1  
 
       - name: Trigger CodeBuild
+        id: codebuild
         run: |
           build_id=$(aws codebuild start-build --project-name application-build --query 'build.id' --output text)
-          echo "Build ID: $build_id"
+          echo "::set-output name=build_id::$build_id"
 
       - name: Wait for CodeBuild to complete
         run: |
+          build_id="${{ steps.codebuild.outputs.build_id }}"
+          echo "Build ID: $build_id"
           echo "Waiting for CodeBuild to complete..."
-          while [[ "$(aws codebuild batch-get-builds --ids $build_id --query 'builds[0].buildStatus' --output text)" == "IN_PROGRESS" ]]; do
-            sleep 10
-          done
+          
           build_status=$(aws codebuild batch-get-builds --ids $build_id --query 'builds[0].buildStatus' --output text)
+
+          while [[ "$build_status" == "IN_PROGRESS" ]]; do
+            echo "Build still in progress..."
+            sleep 10
+            build_status=$(aws codebuild batch-get-builds --ids $build_id --query 'builds[0].buildStatus' --output text)
+          done
+
           if [[ "$build_status" != "SUCCEEDED" ]]; then
             echo "Build failed: $build_status"
             exit 1
+          else
+            echo "Build succeeded: $build_status"
           fi
 
       - name: Deploy with CodeDeploy
